@@ -49,7 +49,7 @@ def get_ship_command(ship):
                 return ship.navigate(
                     ship.closest_point_to(non_taken_planet),
                     game_map,
-                    speed=int(hlt.constants.MAX_SPEED/2),
+                    speed=int(hlt.constants.MAX_SPEED),
                     ignore_ships=True)
     else:
         for non_taken_planet in taken_planets:
