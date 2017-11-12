@@ -78,6 +78,8 @@ class AttackMission(object):
     def get_command(self, game_map, ship, enemy_planets, missions=None):
         # if i am owner
         self.planet_to_attack = game_map.get_planet(self.planet_to_attack.id)
+        if not self.planet_to_attack:
+            self.planet_to_attack = get_closest_enemy_planet(enemy_planets, ship)
         if self.planet_to_attack.owner and self.planet_to_attack.owner.id == game_map.my_id:
             # if its full
             if self.planet_to_attack.is_full():
@@ -90,10 +92,20 @@ class AttackMission(object):
                         game_map,
                         speed=int(hlt.constants.MAX_SPEED),
                         ignore_ships=False)
+                else:
+                    logging.info("NO closest enemy planet")
             # if its not full
             elif ship.can_dock(self.planet_to_attack):
                 logging.info('{} Attacker docking to our planet'.format(ship.id))
                 return ship.dock(self.planet_to_attack)
+            else:
+                self.planet_to_attack = get_closest_enemy_planet(enemy_planets, ship)
+                if self.planet_to_attack:
+                    return ship.navigate(
+                        ship.closest_point_to(self.planet_to_attack),
+                        game_map,
+                        speed=int(hlt.constants.MAX_SPEED),
+                        ignore_ships=False)
         # if its unoccupied
         elif not self.planet_to_attack.owner:
             if ship.can_dock(self.planet_to_attack):
@@ -107,29 +119,30 @@ class AttackMission(object):
                     speed=int(hlt.constants.MAX_SPEED),
                     ignore_ships=False)
 
-        docked_ships = [ship for ship in self.planet_to_attack.all_docked_ships() if ship.owner.id != game_map.my_id]
-        # if it has docked ships
-        if docked_ships:
-            docked_ship = docked_ships[0]
-            logging.info('{} Attacker navigating to docked ship'.format(ship.id))
-            logging.info('{} - {} - {}'.format(docked_ship, ship, ship.closest_point_to(docked_ship)))
-            return ship.navigate(
-                ship.closest_point_to(docked_ship),
-                game_map,
-                speed=int(hlt.constants.MAX_SPEED),
-                ignore_ships=False)
         else:
-            if ship.can_dock(self.planet_to_attack):
-                logging.info('Attacker docking to destroyed planet')
-                return ship.dock(self.planet_to_attack)
-            else:
-                self.planet_to_attack = get_closest_enemy_planet(enemy_planets, ship)
-                logging.info('Attacker navigating to planet with ships')
+            docked_ships = [ship for ship in self.planet_to_attack.all_docked_ships() if ship.owner.id != game_map.my_id]
+            # if it has docked ships
+            if docked_ships:
+                docked_ship = docked_ships[0]
+                logging.info('{} Attacker navigating to docked ship'.format(ship.id))
+                logging.info('{} - {} - {}'.format(docked_ship, ship, ship.closest_point_to(docked_ship)))
                 return ship.navigate(
-                    ship.closest_point_to(self.planet_to_attack),
+                    ship.closest_point_to(docked_ship),
                     game_map,
                     speed=int(hlt.constants.MAX_SPEED),
                     ignore_ships=False)
+            else:
+                if ship.can_dock(self.planet_to_attack):
+                    logging.info('Attacker docking to destroyed planet')
+                    return ship.dock(self.planet_to_attack)
+                else:
+                    self.planet_to_attack = get_closest_enemy_planet(enemy_planets, ship)
+                    logging.info('Attacker navigating to planet with ships')
+                    return ship.navigate(
+                        ship.closest_point_to(self.planet_to_attack),
+                        game_map,
+                        speed=int(hlt.constants.MAX_SPEED),
+                        ignore_ships=False)
 
 
 def get_closest_unfilled_planet(planets, element):
@@ -161,6 +174,7 @@ def attack_mission_command(enemy_planets, ship, missions):
             game_map, ship, enemy_planets, missions)
         return ship_command
     else:
+        logging.info("NO closest enemy planet; cant give mission")
         return None
 
 turn = 0
@@ -198,6 +212,7 @@ while True:
         game.send_command_queue(command_queue)
     else:
         for ship in total_ships:
+            ship_command = None
             end_time = time.time() - start
             if end_time >= 1.85:
                 game.send_command_queue(command_queue)
@@ -225,11 +240,18 @@ while True:
                     ship_command = attack_mission_command(enemy_planets, ship, missions)
             elif ship.id % 3 == 0:
                 ship_command = attack_mission_command(non_taken_planets, ship, missions)
+                logging.info("NO command wy")
+                if not ship_command:
+                    ship_command = attack_mission_command(enemy_planets, ship, missions)
+                    logging.info("NO command wyyyyy")
             elif ship.id not in missions.keys():
                 ship_command = attack_mission_command(enemy_planets, ship, missions)
+            logging.info("{} {}".format(ship_command, ship))
             if ship_command:
                 command_queue.append(ship_command)
                 # Send our set of commands to the Halite engine for this turn
+            else:
+                logging.info("NO ship command")
         game.send_command_queue(command_queue)
     # TURN END
 # GAME END
