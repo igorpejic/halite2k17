@@ -76,10 +76,21 @@ class AttackMission(object):
         self.ship_id = ship_id
 
     def get_command(self, game_map, ship, enemy_planets, missions=None):
-        # if i am owner
+        if isinstance(self.planet_to_attack, hlt.entity.Ship):
+            self.planet_to_attack = game_map.get_player(1).get_ship(self.planet_to_attack.id)
+            if self.planet_to_attack:
+                return ship.navigate(
+                        ship.closest_point_to(self.planet_to_attack),
+                        game_map,
+                        speed=int(hlt.constants.MAX_SPEED),
+                        ignore_ships=False)
+            else:
+                self.planet_to_attack = get_closest_enemy_planet(enemy_planets, ship)
+
         self.planet_to_attack = game_map.get_planet(self.planet_to_attack.id)
         if not self.planet_to_attack:
             self.planet_to_attack = get_closest_enemy_planet(enemy_planets, ship)
+        # if i am owner
         if self.planet_to_attack.owner and self.planet_to_attack.owner.id == game_map.my_id:
             # if its full
             if self.planet_to_attack.is_full():
@@ -196,8 +207,10 @@ while True:
     non_taken_planets = [p for p in planets if not p.owner]
 
     if turn <= 2:
+        taken_enemy_planets = [p for p in planets if p.owner and p.owner.id != my_id]
         closest_enemy_planets = planets
-        for i, ship in enumerate(total_ships):
+        ships_to_expand = total_ships[:2]
+        for i, ship in enumerate(ships_to_expand):
             closest_enemy_planets = sorted(
                 closest_enemy_planets,
                 key=lambda x: ship.calculate_distance_between(x))
@@ -209,7 +222,23 @@ while True:
                 game_map, ship)
             if ship_command:
                 command_queue.append(ship_command)
+        if len(total_ships) > 2:
+            if taken_enemy_planets:
+                logging.info(enemy_planets)
+                missions[total_ships[2].id] = attack_mission_command(enemy_planets, ship, missions)
+            else:
+                all_enemy_ships = [ship for ship in game_map._all_ships() if ship.owner.id != my_id]
+                closest_enemy_ship = min(
+                    all_enemy_ships,
+                    key=lambda x: ship.calculate_distance_between(x)
+                )
+                logging.info(closest_enemy_ship)
+                missions[total_ships[2].id] = AttackMission(
+                    closest_enemy_ship, ship.id)
+                ship_command = missions[ship.id].get_command(
+                    game_map, ship, enemy_planets, missions)
         game.send_command_queue(command_queue)
+
     else:
         for ship in total_ships:
             ship_command = None
