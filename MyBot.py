@@ -202,6 +202,19 @@ def attack_mission_command(enemy_planets, ship, missions):
         logging.info("NO closest enemy planet; cant give mission")
         return None
 
+
+def ship_attack_mission_command(enemy_ships, ship, missions):
+    closest_enemy_ship = get_closest_enemy_ship(enemy_ships, ship)
+    if closest_enemy_ship:
+        missions[ship.id] = ShipAttackMission(
+            closest_enemy_ship, ship.id)
+        ship_command = missions[ship.id].get_command(
+            game_map, ship, enemy_ships, missions)
+        return ship_command
+    else:
+        logging.info("NO closest enemy ship; cant give mission")
+        return None
+
 turn = 0
 missions = {}
 while True:
@@ -269,7 +282,7 @@ while True:
                     if isinstance(missions[ship.id], ShipAttackMission):
                         ship_command = missions[ship.id].get_command(
                             game_map, ship, all_enemy_ships, missions)
-                    elif isinstance(missions[ship.id], AttackMission):
+                    else: # AttackMission ; ColonizeMission
                         ship_command = missions[ship.id].get_command(
                             game_map, ship, enemy_planets, missions)
             # elif ship.id % 50 == 0 and ship.id not in missions.keys() and my_planets:
@@ -287,10 +300,10 @@ while True:
                     ship_command = attack_mission_command(enemy_planets, ship, missions)
             elif ship.id % 3 == 0:
                 ship_command = attack_mission_command(non_taken_planets, ship, missions)
-                logging.info("NO command wy")
                 if not ship_command:
                     ship_command = attack_mission_command(enemy_planets, ship, missions)
-                    logging.info("NO command wyyyyy")
+            elif ship.id % 5 == 0:
+                ship_command = ship_attack_mission_command(all_enemy_ships, ship, missions)
             elif ship.id not in missions.keys():
                 ship_command = attack_mission_command(enemy_planets, ship, missions)
             logging.info("{} {}".format(ship_command, ship))
