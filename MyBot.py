@@ -10,6 +10,8 @@ game = hlt.Game("CarefulAttackerV3")
 logging.info("Starting my Settler bot!")
 import time
 
+from map import QuadTree
+
 
 class ProtectMission(object):
     def __init__(self, planet_to_protect, ship_id):
@@ -93,6 +95,7 @@ def get_closest_enemy_ship(enemy_ships, ship):
         enemy_ships,
         key=lambda x: ship.calculate_distance_between(x))
     return closest_enemy_ship
+
 
 class AttackMission(object):
     def __init__(self, planet_to_attack, ship_id):
@@ -180,7 +183,6 @@ def get_closest_unfilled_planet(planets, element):
         closest_unfilled = None
     return closest_unfilled
 
-
 def get_closest_enemy_planet(enemy_planets, element):
     if not enemy_planets:
         return None
@@ -215,8 +217,14 @@ def ship_attack_mission_command(enemy_ships, ship, missions):
         logging.info("NO closest enemy ship; cant give mission")
         return None
 
+import pickle
+game_map = game.map
+with open('game_map.pkl', 'wb') as output:
+    pickle.dump(game.map, output)
+
 turn = 0
 missions = {}
+
 while True:
     turn += 1
     # TURN START
@@ -285,10 +293,6 @@ while True:
                     else: # AttackMission ; ColonizeMission
                         ship_command = missions[ship.id].get_command(
                             game_map, ship, enemy_planets, missions)
-            # elif ship.id % 50 == 0 and ship.id not in missions.keys() and my_planets:
-            #     missions[ship.id] = ProtectMission(my_planets[0], ship.id)
-            #     ship_command = missions[ship.id].get_command(
-            #         game_map, ship)
             elif ship.id % 2 == 0:
                 closest_unfilled = get_closest_unfilled_planet(my_planets, ship)
                 if closest_unfilled:
