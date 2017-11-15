@@ -1,5 +1,5 @@
 from cocos.rect import Rect
-from map import QuadTree
+from quad_tree_map import QuadTree
 
 def get_planets_as_rects(all_planets):
     '''
@@ -22,44 +22,48 @@ missions = {}
 
 import cv2
 import numpy as np
-def draw_rectangles(quad_tree):
-    img = np.zeros((840, 880, 3), np.uint8)
+def draw_rectangles(img, quad_tree):
     draw_rect(img, quad_tree)
-    cv2.circle(img, (100, 90), 3, (255, 0, 0), 3)
-    cv2.imshow('a', img)
-    cv2.waitKey(0)
+import random
+random.seed()
 
 def draw_rect(img, node):
     for node in node.nodes:
         if node.nodes:
             draw_rect(img, node)
         else:
-            cv2.rectangle(img, (node.x, node.y), (node.x + node.width, node.y + node.height), (0, 255, 0), 3)
+            cv2.rectangle(img, (int(node.x), int(node.y)), (int(node.x + node.width), int(node.y + node.height)), (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)), 1)
+            # cv2.imshow('a', img)
+            # cv2.waitKey(0)
 
 with open('game_map.pkl', 'rb') as game_map:
     game_map = pickle.load(game_map)
 
 all_planets = game_map.all_planets()
+img = np.zeros((840, 880, 3), np.uint8)
+for p in all_planets:
+    cv2.circle(img, (int(p.x), int(p.y)), int(p.radius), (255, 0, 0), 2)
+cv2.imshow('a', img)
+cv2.waitKey(0)
+
 # print(all_planets)
 blockers = get_planets_as_rects(all_planets)
 minimum_size = 32
 quad_tree = QuadTree(0, 0, game_map.width, game_map.height, blockers, 1)
 # print(game_map.width, game_map.height, 'aaa')
 # print(quad_tree.nodes)
-trip = quad_tree.find_path((0, 0), (100, 10))
-draw_rectangles(quad_tree)
+draw_rectangles(img, quad_tree)
 
 # import sys;sys.exit()
-print(trip)
-for i in range(240):
-    print(i)
-    img = np
-    trip = quad_tree.find_path((0, 0), (100, i))
+for p in all_planets:
+    trip = quad_tree.find_path((0, 0), (p.x, p.y), p.radius )
+    # cv2.imshow('a', img)
+    # cv2.waitKey(0)
     if trip is None:
         # already in the block; just thrust towards
-        pass
+        angle = self.calculate_angle_between(target)
     if trip == 1:
         # forbidden zone
         pass
-
-    
+        print('bbb')
+    print(trip)

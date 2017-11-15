@@ -10,16 +10,39 @@ game = hlt.Game("CarefulAttackerV3")
 logging.info("Starting my Settler bot!")
 import time
 
-from map import QuadTree
+from quad_tree_map import QuadTree
+from cocos.rect import Rect
 
+def get_planets_as_rects(all_planets):
+    '''
+    returns (x1, y1, x2, y2)
+    '''
+    rects = []
+    for planet in all_planets:
+        rects.append(
+            Rect(planet.x - planet.radius,
+                 planet.y - planet.radius,
+                 planet.radius * 2,
+                 planet.radius * 2
+                 ))
+    return rects
+
+all_planets = game.map.all_planets()
+blockers = get_planets_as_rects(all_planets)
+
+quad_tree = QuadTree(0, 0, game.map.width, game.map.height, blockers, 5)
+ship_trips = {}
 
 class ProtectMission(object):
     def __init__(self, planet_to_protect, ship_id):
         self.planet_to_protect = planet_to_protect
         self.ship_id = ship_id
+        ship_trips[self.ship_id] = ship.get_ship_trip(quad_tree, self.planet_to_protect)
 
     def get_command(self, game_map, ship, enemy_planet=None, missions=None):
-        return ship.navigate(
+        return ship.navigate2(
+            ship_trips,
+            quad_tree,
             ship.closest_point_to(self.planet_to_protect),
             game_map,
             speed=int(hlt.constants.MAX_SPEED),
@@ -30,17 +53,21 @@ class ColonizeMission(object):
     def __init__(self, planet_to_attack, ship_id):
         self.planet_to_attack = planet_to_attack
         self.ship_id = ship_id
+        ship_trips[self.ship_id] = ship.get_ship_trip(quad_tree, self.planet_to_attack)
 
     def get_command(self, game_map, ship, enemy_planet=None, missions=None):
         docked_ships = self.planet_to_attack.all_docked_ships()
+        logging.info('CAN DOCK {}'.format(ship.can_dock(self.planet_to_attack)))
         if docked_ships:
             docked_ship = docked_ships[0]
         else:
             docked_ship = self.planet_to_attack
         if not docked_ships and ship.can_dock(self.planet_to_attack):
             return ship.dock(self.planet_to_attack)
-        return ship.navigate(
-            ship.closest_point_to(docked_ship),
+        return ship.navigate2(
+            ship_trips,
+            quad_tree,
+            ship.closest_point_to(self.planet_to_attack),
             game_map,
             speed=int(hlt.constants.MAX_SPEED),
             ignore_ships=False)
@@ -76,12 +103,16 @@ class ShipAttackMission(object):
         logging.info('Attack mission ({}) -> {}'.format(ship_id, planet_to_attack))
         self.planet_to_attack = planet_to_attack
         self.ship_id = ship_id
+        ship_trips[self.ship_id] = ship.get_ship_trip(quad_tree, self.planet_to_attack)
 
     def get_command(self, game_map, ship, enemy_ships, missions=None):
         self.planet_to_attack = game_map.get_player(1).get_ship(self.planet_to_attack.id)
         if not self.planet_to_attack:
             self.planet_to_attack = get_closest_enemy_ship(enemy_ships, ship)
-        return ship.navigate(
+            self.trip = None
+        return ship.navigate2(
+                ship_trips,
+                quad_tree,
                 ship.closest_point_to(self.planet_to_attack),
                 game_map,
                 speed=int(hlt.constants.MAX_SPEED),
@@ -102,11 +133,14 @@ class AttackMission(object):
         logging.info('Attack mission ({}) -> {}'.format(ship_id, planet_to_attack))
         self.planet_to_attack = planet_to_attack
         self.ship_id = ship_id
+        ship_trips[self.ship_id] = ship.get_ship_trip(quad_tree, self.planet_to_attack)
 
     def get_command(self, game_map, ship, enemy_planets, missions=None):
         self.planet_to_attack = game_map.get_planet(self.planet_to_attack.id)
         if not self.planet_to_attack:
             self.planet_to_attack = get_closest_enemy_planet(enemy_planets, ship)
+            ship_trips[self.ship_id] = ship.get_ship_trip(quad_tree, self.planet_to_attack)
+
         # if i am owner
         if self.planet_to_attack.owner and self.planet_to_attack.owner.id == game_map.my_id:
             # if its full
@@ -115,7 +149,10 @@ class AttackMission(object):
                 closest_enemy_planet = get_closest_enemy_planet(enemy_planets, ship)
                 if closest_enemy_planet:
                     self.planet_to_attack = closest_enemy_planet
-                    return ship.navigate(
+                    ship_trips[self.ship_id] = ship.get_ship_trip(quad_tree, self.planet_to_attack)
+                    return ship.navigate2(
+                        ship_trips,
+                        quad_tree,
                         ship.closest_point_to(self.planet_to_attack),
                         game_map,
                         speed=int(hlt.constants.MAX_SPEED),
@@ -128,8 +165,11 @@ class AttackMission(object):
                 return ship.dock(self.planet_to_attack)
             else:
                 self.planet_to_attack = get_closest_enemy_planet(enemy_planets, ship)
+                ship_trips[self.ship_id] = ship.get_ship_trip(quad_tree, self.planet_to_attack)
                 if self.planet_to_attack:
-                    return ship.navigate(
+                    return ship.navigate2(
+                        ship_trips,
+                        quad_tree,
                         ship.closest_point_to(self.planet_to_attack),
                         game_map,
                         speed=int(hlt.constants.MAX_SPEED),
@@ -141,7 +181,9 @@ class AttackMission(object):
                 return ship.dock(self.planet_to_attack)
             else:
                 logging.info('{} Attacker navigating to dock position'.format(ship.id))
-                return ship.navigate(
+                return ship.navigate2(
+                    ship_trips,
+                    quad_tree,
                     ship.closest_point_to(self.planet_to_attack),
                     game_map,
                     speed=int(hlt.constants.MAX_SPEED),
@@ -154,7 +196,9 @@ class AttackMission(object):
                 docked_ship = docked_ships[0]
                 logging.info('{} Attacker navigating to docked ship'.format(ship.id))
                 logging.info('{} - {} - {}'.format(docked_ship, ship, ship.closest_point_to(docked_ship)))
-                return ship.navigate(
+                return ship.navigate2(
+                    ship_trips,
+                    quad_tree,
                     ship.closest_point_to(docked_ship),
                     game_map,
                     speed=int(hlt.constants.MAX_SPEED),
@@ -165,8 +209,11 @@ class AttackMission(object):
                     return ship.dock(self.planet_to_attack)
                 else:
                     self.planet_to_attack = get_closest_enemy_planet(enemy_planets, ship)
+                    ship_trips[self.ship_id] = ship.get_ship_trip(quad_tree, self.planet_to_attack)
                     logging.info('Attacker navigating to planet with ships')
-                    return ship.navigate(
+                    return ship.navigate2(
+                        ship_trips,
+                        quad_tree,
                         ship.closest_point_to(self.planet_to_attack),
                         game_map,
                         speed=int(hlt.constants.MAX_SPEED),
@@ -227,6 +274,7 @@ missions = {}
 
 while True:
     turn += 1
+    logging.info(ship_trips)
     # TURN START
     # Update the map for the new turn and get the latest version
     game_map = game.update_map()
@@ -235,6 +283,13 @@ while True:
     command_queue = []
     all_me = game_map.get_me()
     total_ships = all_me.all_ships()
+    ship_ids = [ship.id for ship in total_ships]
+    ids_to_remove = []
+    for ship_id in ship_trips.keys():
+        if ship_id not in ship_ids:
+            ids_to_remove.append(ship_id)
+    for i in ids_to_remove:
+        del ship_trips[i]
     planets_to_be_attacked = []
     planets = game_map.all_planets()
     my_planets = [p for p in planets if p.owner and p.owner.id == my_id]

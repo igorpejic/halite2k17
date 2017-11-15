@@ -235,6 +235,7 @@ class Ship(Entity):
         self.planet = planet if (docking_status is not Ship.DockingStatus.UNDOCKED) else None
         self._docking_progress = progress
         self._weapon_cooldown = cooldown
+        self.trip = None
 
     def thrust(self, magnitude, angle):
         """
@@ -306,6 +307,66 @@ class Ship(Entity):
             return self.navigate(new_target, game_map, speed, True, max_corrections - 1, angular_step)
         speed = speed if (distance >= speed) else distance
         return self.thrust(speed, angle)
+
+    def navigate2(self, ship_trips, quad_tree, target, game_map, speed, avoid_obstacles=True, max_corrections=90, angular_step=1,
+                   ignore_ships=False, ignore_planets=False):
+        """
+        Move a ship to a specific target position (Entity). It is recommended to place the position
+        itself here, else navigate will crash into the target. If avoid_obstacles is set to True (default)
+        will avoid obstacles on the way, with up to max_corrections corrections. Note that each correction accounts
+        for angular_step degrees difference, meaning that the algorithm will naively try max_correction degrees before giving
+        up (and returning None). The navigation will only consist of up to one command; call this method again
+        in the next turn to continue navigating to the position.
+
+        :param Entity target: The entity to which you will navigate
+        :param game_map.Map game_map: The map of the game, from which obstacles will be extracted
+        :param int speed: The (max) speed to navigate. If the obstacle is nearer, will adjust accordingly.
+        :param bool avoid_obstacles: Whether to avoid the obstacles in the way (simple pathfinding).
+        :param int max_corrections: The maximum number of degrees to deviate per turn while trying to pathfind. If exceeded returns None.
+        :param int angular_step: The degree difference to deviate if the original destination has obstacles
+        :param bool ignore_ships: Whether to ignore ships in calculations (this will make your movement faster, but more precarious)
+        :param bool ignore_planets: Whether to ignore planets in calculations (useful if you want to crash onto planets)
+        :return string: The command trying to be passed to the Halite engine or None if movement is not possible within max_corrections degrees.
+        :rtype: str
+        """
+        # Assumes a position, not planet (as it would go to the center of the planet otherwise)
+
+        if self.id not in ship_trips:
+            ship_trips[self.id] = quad_tree.find_path((self.x, self.y), (target.x, target.y), target.radius)
+            if ship_trips[self.id]:
+                angle = self.calculate_angle_between_tuple(ship_trips[self.id][0])
+            else:
+                angle = self.calculate_angle_between(target)
+        elif ship_trips[self.id] is None:
+            logging.info('STUCK')
+            angle = self.calculate_angle_between(target)
+            return self.thrust(3, angle)
+        elif len(ship_trips[self.id]):
+            angle = self.calculate_angle_between(target)
+            return self.thrust(speed, angle)
+        else:
+            distance_from_node = math.sqrt((ship_trips[self.id][0][0] - self.x) ** 2 + (ship_trips[self.id][0][1] - self.y) ** 2)
+
+            if distance_from_node < 10:
+                # arrived at point
+                logging.info('Arrived at point')
+                ship_trips[self.id] = ship_trips[self.id][1:]
+                if not ship_trips[self.id]:
+                    # trip ended
+                    return self.navigate(self.closest_point_to(target), game_map, speed, avoid_obstacles, max_corrections, angular_step, ignore_ships, ignore_planets)
+                else:
+                    angle = self.calculate_angle_between_tuple((ship_trips[self.id][0][0], ship_trips[self.id][0][1]))
+            else:
+                # go to next point
+                angle = self.calculate_angle_between_tuple((ship_trips[self.id][0][0], ship_trips[self.id][0][1]))
+                logging.info('angle{}, x{}, y'.format(angle, ship_trips[self.id][0][0]))
+        return self.thrust(speed, angle)
+    
+    def get_ship_trip(self, quad_tree, target):
+        return quad_tree.find_path((self.x, self.y), (target.x, target.y), target.radius)
+
+    def calculate_angle_between_tuple(self, t):
+        return math.degrees(math.atan2(t[1] - self.y, t[0] - self.x)) % 360
 
     def can_dock(self, planet):
         """

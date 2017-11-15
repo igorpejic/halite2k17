@@ -33,8 +33,8 @@ class QuadTreeNode(Rect):
 
     def subdivide(self, blockers):
         # bottom left
-        width = self.width // 2
-        height = self.height // 2
+        width = self.width / 2
+        height = self.height / 2
         # top left
         node = QuadTreeNode(self.x, self.y, width, height, self)
         if node.check_node(blockers):
@@ -161,9 +161,9 @@ class QuadTree(QuadTreeNode):
             changed = True
 
     def find_neighbors(self):
-        all = self.list_nodes()
-        for op, one in all:
-            for tp, two in all:
+        all_nodes = self.list_nodes()
+        for op, one in all_nodes:
+            for tp, two in all_nodes:
                 if one is two: continue
                 if one.left == two.right and (one.bottom < two.top and one.top > two.bottom):
                     one.n_left.append(two)
@@ -204,7 +204,10 @@ class QuadTree(QuadTreeNode):
 
         while f_score:
             l = [(v, k) for k, v in f_score.items()]
-            l.sort()
+            try:
+                l.sort()
+            except:
+                pass
             x = l[0][1]
             if x is goal:
                 return reconstruct_path(came_from[goal])
@@ -228,17 +231,27 @@ class QuadTree(QuadTreeNode):
                     f_score[y] = g_score[y] + h_score[y]
         raise ValueError('unable to solve map')
 
-    def find_path(self, source, destination):
+    def find_path(self, source, destination, destination_radius):
         # solve the path from source -> destination using a*
-        print(source, destination)
         source = self.cell_at(*source)
-        destination = self.cell_at(*destination)
-        print(source, destination)
-        if source is None or destination is None:
-            return 1
-        if source.center == destination.center:
+        node_destination = self.cell_at(*destination)
+        if node_destination is None:
+            destination = (destination[0] + destination_radius + 1, destination[1])
+            node_destination = self.cell_at(*destination)
+            if not node_destination:
+                destination = (destination[0] - destination_radius - 1, destination[1])
+                node_destination = self.cell_at(*destination)
+            if not node_destination:
+                destination = (destination[0], destination[1] + destination_radius + 1)
+                node_destination = self.cell_at(*destination)
+            if not node_destination:
+                destination = (destination[0], destination[1] - destination_radius - 1)
+                node_destination = self.cell_at(*destination)
+        if source is None or node_destination is None:
             return None
-        path = self.astar(source, destination) + [destination]
+        elif source.center == node_destination.center:
+            return None
+        path = self.astar(source, node_destination) + [node_destination]
 
         # now find the best points along the path rects to use
         points = [source.center]
