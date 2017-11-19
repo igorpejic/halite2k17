@@ -30,7 +30,7 @@ def get_planets_as_rects(all_planets):
 all_planets = game.map.all_planets()
 blockers = get_planets_as_rects(all_planets)
 
-quad_tree = QuadTree(0, 0, game.map.width, game.map.height, blockers, 5)
+quad_tree = QuadTree(0, 0, game.map.width, game.map.height, blockers, 0.5)
 ship_trips = {}
 
 class ProtectMission(object):
@@ -102,11 +102,12 @@ class ShipAttackMission(object):
     def __init__(self, planet_to_attack, ship_id):
         logging.info('Attack mission ({}) -> {}'.format(ship_id, planet_to_attack))
         self.planet_to_attack = planet_to_attack
+        self.player_to_attack = planet_to_attack.owner.id
         self.ship_id = ship_id
         ship_trips[self.ship_id] = ship.get_ship_trip(quad_tree, self.planet_to_attack)
 
-    def get_command(self, game_map, ship, enemy_ships, missions=None):
-        self.planet_to_attack = game_map.get_player(1).get_ship(self.planet_to_attack.id)
+    def get_command(self, game_map, ship, enemy_ships, my_planets, missions=None):
+        self.planet_to_attack = game_map.get_player(self.planet_to_attack.owner.id).get_ship(self.planet_to_attack.id)
         if not self.planet_to_attack:
             self.planet_to_attack = get_closest_enemy_ship(enemy_ships, ship)
             self.trip = None
@@ -127,6 +128,14 @@ def get_closest_enemy_ship(enemy_ships, ship):
         key=lambda x: ship.calculate_distance_between(x))
     return closest_enemy_ship
 
+def get_furthest_planet(planets, ship):
+    if not planets:
+        return None
+    furthest_planet = min(
+        planets,
+        key=lambda x: ship.calculate_distance_between(x))
+    return furthest_planet
+
 
 class AttackMission(object):
     def __init__(self, planet_to_attack, ship_id):
@@ -136,7 +145,12 @@ class AttackMission(object):
         ship_trips[self.ship_id] = ship.get_ship_trip(quad_tree, self.planet_to_attack)
 
     def get_command(self, game_map, ship, enemy_planets, missions=None):
-        self.planet_to_attack = game_map.get_planet(self.planet_to_attack.id)
+        try:
+            self.planet_to_attack = game_map.get_planet(self.planet_to_attack.id)
+        except:
+            self.planet_to_attack = get_closest_enemy_planet(enemy_planets, ship)
+            if not self.planet_to_attack:
+                return None
         if not self.planet_to_attack:
             self.planet_to_attack = get_closest_enemy_planet(enemy_planets, ship)
             ship_trips[self.ship_id] = ship.get_ship_trip(quad_tree, self.planet_to_attack)
@@ -252,9 +266,11 @@ def attack_mission_command(enemy_planets, ship, missions):
         return None
 
 
-def ship_attack_mission_command(enemy_ships, ship, missions):
+def ship_attack_mission_command(enemy_ships, ship, missions, my_planets):
     closest_enemy_ship = get_closest_enemy_ship(enemy_ships, ship)
-    if closest_enemy_ship:
+    furthest_planet = get_furthest_planet(my_planets, ship)
+    if (closest_enemy_ship and furthest_planet and
+        ship.calculate_distance_between(furthest_planet) + 4 > ship.calculate_distance_between(closest_enemy_ship)):
         missions[ship.id] = ShipAttackMission(
             closest_enemy_ship, ship.id)
         ship_command = missions[ship.id].get_command(
@@ -300,40 +316,40 @@ while True:
     if turn <= 2:
         taken_enemy_planets = [p for p in planets if p.owner and p.owner.id != my_id]
         closest_enemy_planets = planets
-        ships_to_expand = total_ships[:2]
+        ships_to_expand = total_ships[:3]
         for i, ship in enumerate(ships_to_expand):
             closest_enemy_planets = sorted(
                 closest_enemy_planets,
                 key=lambda x: ship.calculate_distance_between(x))
             closest_enemy_planet = closest_enemy_planets[0]
-            closest_enemy_planets.remove(closest_enemy_planet)
+            # closest_enemy_planets.remove(closest_enemy_planet)
             missions[ship.id] = ColonizeMission(
                 closest_enemy_planet, ship.id)
             ship_command = missions[ship.id].get_command(
                 game_map, ship)
             if ship_command:
                 command_queue.append(ship_command)
-        if len(total_ships) > 2:
-            if taken_enemy_planets:
-                logging.info(enemy_planets)
-                missions[total_ships[2].id] = attack_mission_command(enemy_planets, ship, missions)
-            else:
-                closest_enemy_ship = min(
-                    all_enemy_ships,
-                    key=lambda x: ship.calculate_distance_between(x)
-                )
-                logging.info(closest_enemy_ship)
-                missions[total_ships[2].id] = ShipAttackMission(
-                    closest_enemy_ship, ship.id)
-                ship_command = missions[ship.id].get_command(
-                    game_map, ship, all_enemy_ships, missions)
+        # if len(total_ships) > 2:
+        #     if taken_enemy_planets:
+        #         logging.info(enemy_planets)
+        #         missions[total_ships[2].id] = attack_mission_command(enemy_planets, ship, missions)
+        #     else:
+        #         closest_enemy_ship = min(
+        #             all_enemy_ships,
+        #             key=lambda x: ship.calculate_distance_between(x)
+        #         )
+        #         logging.info(closest_enemy_ship)
+        #         missions[total_ships[2].id] = ShipAttackMission(
+        #             closest_enemy_ship, ship.id)
+        #         ship_command = missions[ship.id].get_command(
+        #             game_map, ship, all_enemy_ships, missions)
         game.send_command_queue(command_queue)
 
     else:
         for ship in total_ships:
             ship_command = None
             end_time = time.time() - start
-            if end_time >= 1.85:
+            if end_time >= 1.25:
                 game.send_command_queue(command_queue)
                 break
             # If the ship is docked
@@ -344,25 +360,23 @@ while True:
                 if enemy_planets:
                     if isinstance(missions[ship.id], ShipAttackMission):
                         ship_command = missions[ship.id].get_command(
-                            game_map, ship, all_enemy_ships, missions)
+                            game_map, ship, all_enemy_ships, my_planets, missions)
                     else: # AttackMission ; ColonizeMission
                         ship_command = missions[ship.id].get_command(
                             game_map, ship, enemy_planets, missions)
-            elif ship.id % 2 == 0:
+            elif ship.id % 2 == 0 or turn < 50:
                 closest_unfilled = get_closest_unfilled_planet(my_planets, ship)
                 if closest_unfilled:
                     missions[ship.id] = AttackMission(
                         closest_unfilled, ship.id)
                     ship_command = missions[ship.id].get_command(
                         game_map, ship, enemy_planets, missions)
+                elif non_taken_planets:
+                    ship_command = attack_mission_command(non_taken_planets, ship, missions)
                 else:
                     ship_command = attack_mission_command(enemy_planets, ship, missions)
             elif ship.id % 3 == 0:
-                ship_command = attack_mission_command(non_taken_planets, ship, missions)
-                if not ship_command:
-                    ship_command = attack_mission_command(enemy_planets, ship, missions)
-            elif ship.id % 5 == 0:
-                ship_command = ship_attack_mission_command(all_enemy_ships, ship, missions)
+                ship_command = ship_attack_mission_command(all_enemy_ships, ship, missions, my_planets)
             elif ship.id not in missions.keys():
                 ship_command = attack_mission_command(enemy_planets, ship, missions)
             logging.info("{} {}".format(ship_command, ship))

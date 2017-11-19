@@ -1,4 +1,5 @@
 import math
+import logging
 import random
 
 from cocos.rect import Rect
@@ -247,9 +248,14 @@ class QuadTree(QuadTreeNode):
             if not node_destination:
                 destination = (destination[0], destination[1] - destination_radius - 1)
                 node_destination = self.cell_at(*destination)
-        if source is None or node_destination is None:
+        if source is None:
+            logging.info('SOURCE IS NONE')
+            return None
+        elif node_destination is None:
+            logging.info('NODE_DEST IS NONE')
             return None
         elif source.center == node_destination.center:
+            logging.info('SOURCE IS DESINATION')
             return None
         path = self.astar(source, node_destination) + [node_destination]
 

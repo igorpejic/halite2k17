@@ -340,14 +340,14 @@ class Ship(Entity):
         elif ship_trips[self.id] is None:
             logging.info('STUCK')
             angle = self.calculate_angle_between(target)
-            return self.thrust(3, angle)
+            return self.thrust(7, angle)
         elif len(ship_trips[self.id]):
             angle = self.calculate_angle_between(target)
             return self.thrust(speed, angle)
         else:
             distance_from_node = math.sqrt((ship_trips[self.id][0][0] - self.x) ** 2 + (ship_trips[self.id][0][1] - self.y) ** 2)
 
-            if distance_from_node < 10:
+            if distance_from_node < 20:
                 # arrived at point
                 logging.info('Arrived at point')
                 ship_trips[self.id] = ship_trips[self.id][1:]
@@ -363,7 +363,10 @@ class Ship(Entity):
         return self.thrust(speed, angle)
     
     def get_ship_trip(self, quad_tree, target):
-        return quad_tree.find_path((self.x, self.y), (target.x, target.y), target.radius)
+        import time
+        start = time.time()
+        ret =  quad_tree.find_path((self.x, self.y), (target.x, target.y), target.radius)
+        logging.info('Esitmated time: {}'.format(time.time() - start))
 
     def calculate_angle_between_tuple(self, t):
         return math.degrees(math.atan2(t[1] - self.y, t[0] - self.x)) % 360
