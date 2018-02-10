@@ -33,8 +33,8 @@ def draw_rect(img, node):
             draw_rect(img, node)
         else:
             cv2.rectangle(img, (int(node.x), int(node.y)), (int(node.x + node.width), int(node.y + node.height)), (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)), 1)
-            # cv2.imshow('a', img)
-            # cv2.waitKey(0)
+            cv2.imshow('a', img)
+            cv2.waitKey(0)
 
 with open('game_map.pkl', 'rb') as game_map:
     game_map = pickle.load(game_map)
